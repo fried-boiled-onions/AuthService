@@ -1,3 +1,4 @@
+```
 openapi: 3.0.3
 info:
   title: Messenger REST API
@@ -6,11 +7,16 @@ info:
 servers:
 - url: https://virtserver.swaggerhub.com/vniia/MessengerAPI/3.0.3
   description: SwaggerHub API Auto Mocking
+tags: 
+  - name: auth
+    description: спецификация, описывающая операции аутентификации и регистрации
 security:
 - BearerAuth: []
 paths:
   /auth/register:
     post:
+      tags:
+        - auth
       summary: Регистрация нового пользователя
       requestBody:
         content:
@@ -34,6 +40,8 @@ paths:
       security: []
   /auth/login:
     post:
+      tags:
+        - auth
       summary: Авторизация пользователя и выдача токенов
       requestBody:
         content:
@@ -63,6 +71,8 @@ paths:
       security: []
   /auth/refresh:
     post:
+      tags:
+        - auth
       summary: Обновление access токена
       requestBody:
         content:
@@ -86,6 +96,8 @@ paths:
       security: []
   /auth/logout:
     post:
+      tags:
+        - auth
       summary: Инвалидация refresh токена
       requestBody:
         content:
@@ -109,6 +121,8 @@ paths:
       security: []
   /profile/{id}:
     get:
+      tags:
+        - auth
       summary: Получение данных о пользователе
       parameters:
       - name: id
@@ -132,6 +146,8 @@ paths:
       security:
       - BearerAuth: []
     put:
+      tags:
+        - auth
       summary: Обновление данных профиля
       parameters:
       - name: id
@@ -244,3 +260,4 @@ components:
       type: http
       scheme: bearer
       bearerFormat: JWT
+```
