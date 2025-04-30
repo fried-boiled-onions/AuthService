@@ -1,17 +1,17 @@
 {
   "format": 1,
   "restore": {
-    "C:\\Users\\borut\\Desktop\\Проект\\AuthService\\AuthService.csproj": {}
+    "C:\\Users\\borut\\Source\\Repos\\messenger-backend\\AuthService\\AuthService.csproj": {}
   },
   "projects": {
-    "C:\\Users\\borut\\Desktop\\Проект\\AuthService\\AuthService.csproj": {
+    "C:\\Users\\borut\\Source\\Repos\\messenger-backend\\AuthService\\AuthService.csproj": {
       "version": "1.0.0",
       "restore": {
-        "projectUniqueName": "C:\\Users\\borut\\Desktop\\Проект\\AuthService\\AuthService.csproj",
+        "projectUniqueName": "C:\\Users\\borut\\Source\\Repos\\messenger-backend\\AuthService\\AuthService.csproj",
         "projectName": "AuthService",
-        "projectPath": "C:\\Users\\borut\\Desktop\\Проект\\AuthService\\AuthService.csproj",
+        "projectPath": "C:\\Users\\borut\\Source\\Repos\\messenger-backend\\AuthService\\AuthService.csproj",
         "packagesPath": "C:\\Users\\borut\\.nuget\\packages\\",
-        "outputPath": "C:\\Users\\borut\\Desktop\\Проект\\AuthService\\obj\\",
+        "outputPath": "C:\\Users\\borut\\Source\\Repos\\messenger-backend\\AuthService\\obj\\",
         "projectStyle": "PackageReference",
         "fallbackFolders": [
           "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages"

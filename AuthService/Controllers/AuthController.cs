@@ -1,9 +1,9 @@
-using AuthService.Models;
 using Microsoft.AspNetCore.Mvc;
-using System.Net.Http;
+using AuthService.Models;
+using System.Security.Cryptography;
 using System.Text;
-using System.Text.Json;
-using System.Threading.Tasks;
+using System.Linq;
+using System.Collections.Generic;
 
 namespace AuthService.Controllers
 {
@@ -11,46 +11,45 @@ namespace AuthService.Controllers
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
-        private readonly HttpClient _httpClient;
 
-        private readonly ILogger<AuthController> _logger;
-
-        public AuthController(IHttpClientFactory httpClientFactory, ILogger<AuthController> logger)
+        private static readonly List<User> Users = new List<User>
         {
-            _httpClient = httpClientFactory.CreateClient();
-            _httpClient.BaseAddress = new Uri("http://localhost:8088");
-            _logger = logger;
-        }
+            new User { Id = 1, Email = "admin@example.com", PasswordHash = HashPassword("password") },
+            new User { Id = 2, Email = "user@example.com", PasswordHash = HashPassword("12345") }
+        };
 
         [HttpPost("login")]
-        public async Task<IActionResult> Login([FromBody] LoginRequest request)
+        public IActionResult Login([FromBody] LoginRequest request)
         {
-            var json = JsonSerializer.Serialize(request);
-            var content = new StringContent(json, Encoding.UTF8, "application/json");
+            var user = Users.FirstOrDefault(u => u.Email == request.Email);
 
-            var response = await _httpClient.PostAsync("/api/auth/login", content);
-            if (!response.IsSuccessStatusCode)
+            if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
             {
-                return StatusCode((int)response.StatusCode, await response.Content.ReadAsStringAsync());
+                return Unauthorized("Неверный email или пароль.");
             }
-
-            var responseString = await response.Content.ReadAsStringAsync();
-            var loginResponse = JsonSerializer.Deserialize<LoginResponse>(responseString, new JsonSerializerOptions
+            var response = new LoginResponse
             {
-                PropertyNameCaseInsensitive = true
-            });
+                AccessToken = "mocked-access-token",
+                RefreshToken = "mocked-refresh-token"
+            };
 
-            return Ok(loginResponse);
+            return Ok(response);
         }
 
-        [HttpGet("test")]
-        public async Task<IActionResult> TestRequest()
+        private static string HashPassword(string password)
         {
-            _logger.LogInformation("ZAPROS /api/endpoint");
-            var response = await _httpClient.GetAsync("/api/endpoint");
-            var content = await response.Content.ReadAsStringAsync();
-            _logger.LogInformation($"OTVET: {content}");
-            return Ok(content);
+            using (var sha256 = SHA256.Create())
+            {
+                var bytes = Encoding.UTF8.GetBytes(password);
+                var hashBytes = sha256.ComputeHash(bytes);
+                return Convert.ToBase64String(hashBytes);
+            }
+        }
+
+        private static bool VerifyPassword(string password, string storedHash)
+        {
+            var passwordHash = HashPassword(password);
+            return passwordHash == storedHash;
         }
     }
 }
