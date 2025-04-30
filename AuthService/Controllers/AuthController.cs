@@ -1,9 +1,10 @@
-using Microsoft.AspNetCore.Mvc;
-using AuthService.Models;
+using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Security.Cryptography;
 using System.Text;
-using System.Linq;
-using System.Collections.Generic;
+using Microsoft.AspNetCore.Mvc;
+using AuthService.Models;
 
 namespace AuthService.Controllers
 {
@@ -11,18 +12,32 @@ namespace AuthService.Controllers
     [Route("api/auth")]
     public class AuthController : ControllerBase
     {
-
-        private static readonly List<User> Users = new List<User>
+        private static readonly List<User> Users = new List<User>();
+        [HttpPost("register")]
+        public IActionResult Register([FromBody] LoginRequest request)
         {
-            new User { Id = 1, Email = "admin@example.com", PasswordHash = HashPassword("password") },
-            new User { Id = 2, Email = "user@example.com", PasswordHash = HashPassword("12345") }
-        };
+            var existingUser = Users.FirstOrDefault(u => u.Email == request.Email);
+            if (existingUser != null)
+            {
+                return Conflict("Пользователь с таким email уже существует.");
+            }
+            var hashedPassword = HashPassword(request.Password);
+            var newUser = new User
+            {
+                Id = Users.Count + 1,
+                Email = request.Email,
+                PasswordHash = hashedPassword
+            };
+            Users.Add(newUser);
+
+            return Ok("Пользователь успешно зарегистрирован.");
+        }
 
         [HttpPost("login")]
         public IActionResult Login([FromBody] LoginRequest request)
         {
-            var user = Users.FirstOrDefault(u => u.Email == request.Email);
 
+            var user = Users.FirstOrDefault(u => u.Email == request.Email);
             if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
             {
                 return Unauthorized("Неверный email или пароль.");
