@@ -5,11 +5,16 @@ using System.Security.Cryptography;
 using System.Text;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Npgsql;
+using StackExchange.Redis;
+using System.Security.Claims;
+using Microsoft.IdentityModel.Tokens;
 using AuthService.Models;
 using AuthService.Services;
+using AuthService.Data;
 
-namespace AuthService.Controllers
-{
+namespace AuthService.Controllers;
+
     [ApiController]
     [Route("api/auth")]
     public class AuthController : ControllerBase
@@ -17,60 +22,66 @@ namespace AuthService.Controllers
         private readonly JwtTokenService _jwtTokenService;
         private readonly CookieService _cookieService;
         private static readonly List<User> Users = new List<User>();
+        private readonly UserRepository _repository = new UserRepository("Host=localhost;Port=5432;Database=messenger-db;Username=postgres;Password=postgres");
+        private readonly IConnectionMultiplexer _redis;
 
-        public AuthController(JwtTokenService jwtTokenService, CookieService cookieService)
-        {
-            _jwtTokenService = jwtTokenService;
-            _cookieService = cookieService;
-        }
+    public AuthController(JwtTokenService jwtTokenService, CookieService cookieService, IConnectionMultiplexer redis)
+    {
+        _jwtTokenService = jwtTokenService;
+        _cookieService = cookieService;
+        //_repository = repository;
+        _redis = redis;
+    }
 
         [HttpPost("register")]
-        public IActionResult Register([FromBody] RegisterRequest request)
+        public async Task<IActionResult> Register([FromBody] RegisterRequest request)
         {
-            var existingUser = Users.FirstOrDefault(u => u.Email == request.Email);
-            if (existingUser != null)
+            try
+            {
+                var hashedPassword = HashPassword(request.Password);
+
+                var userId = await _repository.AddUserAsync(request.Username, request.Email, hashedPassword);
+
+                var accessToken = _jwtTokenService.GenerateAccessToken(userId);
+                var refreshToken = _jwtTokenService.GenerateRefreshToken();
+
+                var db = _redis.GetDatabase();
+                await db.StringSetAsync(Convert.ToString(userId), refreshToken, TimeSpan.FromDays(30));
+
+                _cookieService.SetTokenInCookie("accessToken", accessToken, DateTime.UtcNow.AddMinutes(15));
+                _cookieService.SetTokenInCookie("refreshToken", refreshToken, DateTime.UtcNow.AddDays(30));
+
+                return Ok(new RegisterResponse
+            {
+                Message = "Регистрация прошла успешно",
+                UserId = userId,
+                AccessToken = accessToken,
+                RefreshToken = refreshToken
+            });
+            }
+            catch (PostgresException ex) when (ex.SqlState == "23505")
             {
                 return Conflict(new ErrorResponse
                 {
-                    Message = "Пользователь с таким email уже существует.",
+                    Message = ex.Message,
                     StatusCode = StatusCodes.Status409Conflict
                 });
             }
-
-            var hashedPassword = HashPassword(request.Password);
-            var refreshToken = _jwtTokenService.GenerateRefreshToken();
-
-            var newUser = new User
+            catch (Exception ex)
             {
-                Id = Users.Count + 1,
-                Email = request.Email,
-                PasswordHash = hashedPassword,
-                RefreshToken = refreshToken,
-                Username = request.Username 
-            };
-
-            Users.Add(newUser);
-
-            var accessToken = _jwtTokenService.GenerateAccessToken(newUser.Email);
-
-            _cookieService.SetTokenInCookie("accessToken", accessToken, DateTime.UtcNow.AddMinutes(15));
-            _cookieService.SetTokenInCookie("refreshToken", refreshToken, DateTime.UtcNow.AddDays(7));
-
-            return Ok(new RegisterResponse
-            {
-                Message = "Регистрация прошла успешно.",
-                Username = newUser.Username,
-                AccessToken = accessToken,
-                RefreshToken = refreshToken,
-            });
-
+                return StatusCode(StatusCodes.Status500InternalServerError, new ErrorResponse
+                {
+                    Message = $"UnexpectedError: {ex.Message}",
+                    StatusCode = StatusCodes.Status500InternalServerError
+                });
+            }
         }
 
         [HttpPost("login")]
-        public IActionResult Login([FromBody] LoginRequest request)
+        public async Task<IActionResult> Login([FromBody] LoginRequest request)
         {
-            var user = Users.FirstOrDefault(u => u.Email == request.Email);
-            if (user == null || !VerifyPassword(request.Password, user.PasswordHash))
+        var userId = await _repository.LoginUserAsync(request.Email, HashPassword(request.Password));
+            if (userId == -1)
             {
                 return Unauthorized(new ErrorResponse
                 {
@@ -79,12 +90,14 @@ namespace AuthService.Controllers
                 });
             }
 
-            var accessToken = _jwtTokenService.GenerateAccessToken(user.Email);
+            var accessToken = _jwtTokenService.GenerateAccessToken(userId);
             var refreshToken = _jwtTokenService.GenerateRefreshToken();
-            user.RefreshToken = refreshToken;
+
+            var db = _redis.GetDatabase();
+            await db.StringSetAsync(Convert.ToString(userId), refreshToken, TimeSpan.FromDays(30));
 
             _cookieService.SetTokenInCookie("accessToken", accessToken, DateTime.UtcNow.AddMinutes(15));
-            _cookieService.SetTokenInCookie("refreshToken", refreshToken, DateTime.UtcNow.AddDays(7));
+            _cookieService.SetTokenInCookie("refreshToken", refreshToken, DateTime.UtcNow.AddDays(30));
 
             return Ok(new LoginResponse
             {
@@ -93,32 +106,67 @@ namespace AuthService.Controllers
             });
         }
 
-        [HttpPost("refresh")]
-        public IActionResult Refresh([FromBody] RefreshRequest request)
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh([FromBody] RefreshRequest request)
+    {
+        var accessToken = request.AccessToken;
+        var refreshToken = request.RefreshToken;
+        if (string.IsNullOrEmpty(accessToken) || string.IsNullOrEmpty(refreshToken))
         {
-            var user = Users.FirstOrDefault(u => u.RefreshToken == request.RefreshToken);
-            if (user == null)
+            return Unauthorized(new ErrorResponse
             {
-                return Unauthorized(new ErrorResponse
-                {
-                    Message = "Неверный refresh токен.",
-                    StatusCode = StatusCodes.Status401Unauthorized
-                });
-            }
-
-            var newAccessToken = _jwtTokenService.GenerateAccessToken(user.Email);
-            var newRefreshToken = _jwtTokenService.GenerateRefreshToken();
-            user.RefreshToken = newRefreshToken;
-
-            _cookieService.SetTokenInCookie("accessToken", newAccessToken, DateTime.UtcNow.AddMinutes(15));
-            _cookieService.SetTokenInCookie("refreshToken", newRefreshToken, DateTime.UtcNow.AddDays(7));
-
-            return Ok(new RefreshResponse
-            {
-                AccessToken = newAccessToken,
-                RefreshToken = newRefreshToken
+                Message = "Неверный refresh токен.",
+                StatusCode = StatusCodes.Status401Unauthorized
             });
         }
+
+        var principal = _jwtTokenService.GetPrincipal(accessToken);
+        if (principal == null)
+        {
+            Console.WriteLine("У нас principal не достается");
+            return Unauthorized(new ErrorResponse
+            {
+                Message = "Неверный access токен.",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        var userId = principal.FindFirst(ClaimTypes.NameIdentifier)?.Value;
+        if (string.IsNullOrEmpty(userId))
+        {
+            Console.WriteLine("У нас UserID не парсится");
+            return Unauthorized(new ErrorResponse
+            {
+                Message = "Неверный access токен.",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        var db = _redis.GetDatabase();
+        var storedRefreshToken = await db.StringGetAsync(Convert.ToString(userId));
+        if (storedRefreshToken != refreshToken)
+        {
+            return Unauthorized(new ErrorResponse
+            {
+                Message = "Неверный refresh токен.",
+                StatusCode = StatusCodes.Status401Unauthorized
+            });
+        }
+
+        var newAccessToken = _jwtTokenService.GenerateAccessToken(int.Parse(userId));
+        var newRefreshToken = _jwtTokenService.GenerateRefreshToken();
+
+        await db.StringSetAsync(userId, newRefreshToken, TimeSpan.FromDays(30));
+
+        _cookieService.SetTokenInCookie("accessToken", newAccessToken, DateTime.UtcNow.AddMinutes(15));
+        _cookieService.SetTokenInCookie("refreshToken", newRefreshToken, DateTime.UtcNow.AddDays(30));
+
+        return Ok(new RefreshResponse
+        {
+            AccessToken = newAccessToken,
+            RefreshToken = newRefreshToken
+        });
+    }
 
 
         [HttpPost("logout")]
@@ -145,13 +193,26 @@ namespace AuthService.Controllers
             });
         }
 
-        private static string HashPassword(string password)
+    [HttpGet("verify")]
+    public IActionResult VerifyToken()
+    {
+        var token = Request.Headers["Authorization"].ToString().Replace("Bearer ", "");
+        if (_jwtTokenService.VerifyAccessToken(token))
         {
-            using var sha256 = SHA256.Create();
-            var bytes = Encoding.UTF8.GetBytes(password);
-            var hashBytes = sha256.ComputeHash(bytes);
-            return Convert.ToBase64String(hashBytes);
+            return Ok();
         }
+        return Unauthorized();
+    }
+
+    
+
+        private static string HashPassword(string password)
+    {
+        using var sha256 = SHA256.Create();
+        var bytes = Encoding.UTF8.GetBytes(password);
+        var hashBytes = sha256.ComputeHash(bytes);
+        return Convert.ToBase64String(hashBytes);
+    }
 
         private static bool VerifyPassword(string password, string storedHash)
         {
@@ -159,4 +220,3 @@ namespace AuthService.Controllers
             return passwordHash == storedHash;
         }
     }
-}

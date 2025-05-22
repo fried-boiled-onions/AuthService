@@ -9,13 +9,13 @@ namespace AuthService.Services
             _httpContextAccessor = httpContextAccessor;
         }
 
-        // Получение токена из куки
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ
         public string GetTokenFromCookie(string tokenName)
         {
             return _httpContextAccessor.HttpContext?.Request.Cookies[tokenName];
         }
 
-        // Установка токена в куки
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅ пїЅпїЅпїЅпїЅ
         public void SetTokenInCookie(string tokenName, string token, DateTime expiresAt, bool httpOnly = true)
         {
             _httpContextAccessor.HttpContext?.Response.Cookies.Append(tokenName, token, new CookieOptions
@@ -27,7 +27,7 @@ namespace AuthService.Services
             });
         }
 
-        // Удаление токена из куки
+        // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅ
         public void RemoveTokenFromCookie(string tokenName)
         {
             _httpContextAccessor.HttpContext?.Response.Cookies.Delete(tokenName);
@@ -39,8 +39,8 @@ namespace AuthService.Services
             string refreshToken,
             DateTime refreshTokenExpires)
         {
-            SetTokenInCookie("accessToken", accessToken, accessTokenExpires, httpOnly: false); // JS-доступен
-            SetTokenInCookie("refreshToken", refreshToken, refreshTokenExpires, httpOnly: true); // Защищённый
+            SetTokenInCookie("accessToken", accessToken, accessTokenExpires, httpOnly: false); // JS-пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+            SetTokenInCookie("refreshToken", refreshToken, refreshTokenExpires, httpOnly: true); // пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
         }
     }
 }

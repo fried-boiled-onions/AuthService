@@ -1,5 +1,5 @@
-namespace AuthService.Models
-{
+namespace AuthService.Models;
+
     public class User
     {
         public int Id { get; set; }
@@ -8,4 +8,3 @@ namespace AuthService.Models
         public string RefreshToken { get; set; }
         public string Username { get; set; } // Добавлено
     }
-}

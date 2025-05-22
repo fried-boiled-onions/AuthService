@@ -1,7 +1,7 @@
-namespace AuthService.Models
+namespace AuthService.Models;
+
+public class RefreshRequest
 {
-    public class RefreshRequest
-    {
-        public string RefreshToken { get; set; }
-    }
+    public string AccessToken { get; set; }
+    public string RefreshToken { get; set; }
 }

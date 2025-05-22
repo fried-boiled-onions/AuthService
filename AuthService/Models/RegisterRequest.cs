@@ -1,5 +1,5 @@
-namespace AuthService.Models
-{
+namespace AuthService.Models;
+
     public class RegisterRequest
     {
         public string Username { get; set; }
@@ -7,5 +7,5 @@ namespace AuthService.Models
         public string Password { get; set; }
 
     }
-}
+
 

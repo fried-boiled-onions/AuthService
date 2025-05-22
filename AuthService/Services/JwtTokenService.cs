@@ -3,6 +3,7 @@ using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Text;
+using System.Threading.Tasks;
 using AuthService.Models;
 using Microsoft.IdentityModel.Tokens;
 
@@ -19,14 +20,12 @@ namespace AuthService.Services
             _settings = settings;
         }
 
-        public string GenerateAccessToken(string email)
+        public string GenerateAccessToken(int id)
         {
             var claims = new[]
             {
-            new Claim(ClaimTypes.Name, email),
-            new Claim(JwtRegisteredClaimNames.Email, email),
-            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),  
-            new Claim("iat", DateTime.UtcNow.ToString())  
+            new Claim(ClaimTypes.NameIdentifier, id.ToString()),
+            new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString())
             };
 
             var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret));
@@ -45,44 +44,73 @@ namespace AuthService.Services
 
         public string GenerateRefreshToken()
         {
-            var randomNumber = new byte[64];
-            using var rng = RandomNumberGenerator.Create();
-            rng.GetBytes(randomNumber);
-            return Convert.ToBase64String(randomNumber);
+            return Guid.NewGuid().ToString();
         }
 
-        public void SaveRefreshToken(string email, string refreshToken)
+        public async Task SaveRefreshToken(int id, string refreshToken)
         {
-            RefreshTokens[email] = refreshToken;
+            //var db = _redis.GetDatabase();
+            //await db.StringSetValue(id.ToString(), refreshToken);
+        }
+
+        public bool VerifyAccessToken(string token)
+        {
+            var handler = new JwtSecurityTokenHandler();
+            try
+            {
+                handler.ValidateToken(token, new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = _settings.Issuer,
+                    ValidAudience = _settings.Audience,
+                    IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret))
+                }, out _);
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Validate access token exception: {ex.Message}");
+                return false;
+            }
         }
 
         public bool ValidateRefreshToken(string email, string refreshToken)
         {
+
             return RefreshTokens.TryGetValue(email, out var savedToken) && savedToken == refreshToken;
         }
 
-        public string? GetEmailFromExpiredToken(string token)
+        public ClaimsPrincipal GetPrincipal(string token)
         {
-            var tokenHandler = new JwtSecurityTokenHandler();
-            var key = Encoding.UTF8.GetBytes(_settings.Secret);
+            Console.WriteLine($"Secret: {_settings.Secret}, Issuer: {_settings.Issuer}, Audience: {_settings.Audience}");
+            var tokenValidationParams = new TokenValidationParameters
+            {
+                ValidateAudience = true,
+                ValidateIssuer = true,
+                ValidateIssuerSigningKey = true,
+                IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_settings.Secret)),
+                ValidIssuer = _settings.Issuer,
+                ValidAudience = _settings.Audience,
+                ValidateLifetime = false
+            };
 
+            var tokenHandler = new JwtSecurityTokenHandler();
             try
             {
-                var principal = tokenHandler.ValidateToken(token, new TokenValidationParameters
+                var principal = tokenHandler.ValidateToken(token, tokenValidationParams, out var securityToken);
+                if (securityToken is not JwtSecurityToken jwtSecurityToken ||
+                    !jwtSecurityToken.Header.Alg.Equals(SecurityAlgorithms.HmacSha256, StringComparison.InvariantCultureIgnoreCase))
                 {
-                    ValidateIssuer = true,
-                    ValidateAudience = true,
-                    ValidateIssuerSigningKey = true,
-                    ValidIssuer = _settings.Issuer,
-                    ValidAudience = _settings.Audience,
-                    IssuerSigningKey = new SymmetricSecurityKey(key),
-                    ValidateLifetime = false
-                }, out _);
-
-                return principal.Identity?.Name;
+                    return null;
+                }
+                return principal;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"Token validation error: {ex.Message}");
                 return null;
             }
         }

@@ -1,5 +1,5 @@
-namespace AuthService.Models
-{
+namespace AuthService.Models;
+
     public class RefreshResponse
     {
         public string AccessToken { get; set; }
@@ -7,4 +7,3 @@ namespace AuthService.Models
 
     }
 
-}
